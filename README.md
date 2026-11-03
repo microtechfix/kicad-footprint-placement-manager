@@ -293,3 +293,9 @@ tests/                 workflow test on KiCad demo boards, mocked IPC test
 - Writing `CircuitBlock` back to the schematic isn't automatic. Set it in the
   symbol properties if you want it permanent; manual groups are kept in
   `.fpm.json` meanwhile.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).

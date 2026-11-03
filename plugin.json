@@ -1,0 +1,30 @@
+{
+    "$schema": "https://go.kicad.org/api/schemas/v1",
+    "identifier": "com.microtechfix.footprint-placement-manager",
+    "name": "Footprint Placement Manager",
+    "description": "Identifies circuit blocks, proposes component placement by block and pad-to-pad connectivity, and lets you review and refine it before routing.",
+    "runtime": {
+        "type": "python",
+        "min_version": "3.9"
+    },
+    "actions": [
+        {
+            "identifier": "open-manager",
+            "name": "Footprint Placement Manager",
+            "description": "Group footprints by schematic blocks and propose a placement for review",
+            "show-button": true,
+            "scopes": [
+                "pcb"
+            ],
+            "entrypoint": "fpm_action.py",
+            "icons-light": [
+                "icons/fpm-24.png",
+                "icons/fpm-48.png"
+            ],
+            "icons-dark": [
+                "icons/fpm-dark-24.png",
+                "icons/fpm-dark-48.png"
+            ]
+        }
+    ]
+}

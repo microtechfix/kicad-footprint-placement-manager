@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footprint Placement Manager</title>
+<style>
+:root{
+  --bg:#0f1216; --panel:#161a20; --panel2:#1c2129; --line:#2a313c; --text:#e6e9ee; --mute:#8b95a5;
+  --acc:#5b9dff; --ok:#3ccf8e; --warn:#f2b84b; --bad:#ff6b6b; --board:#0c2a1f; --edge:#e8d36a;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; font-size:13px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:#3d4757;background:#222935}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.primary:hover{filter:brightness(1.1)}
+button.danger{border-color:#6b2e2e}
+button:disabled{opacity:.45;cursor:default}
+input[type=text],input[type=number],select{background:#0f1319;border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+input[type=number]{width:70px}
+#rulesT input[type=number]{width:52px}
+#app{display:grid;grid-template-columns:400px 1fr;grid-template-rows:46px 1fr;height:100vh}
+header{grid-column:1/3;display:flex;align-items:center;gap:14px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:14px;margin:0;font-weight:650;letter-spacing:.2px}
+header .board{color:var(--mute)}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--mute)}
+.badge.live{color:var(--ok);border-color:#285c45}
+.badge.off{color:var(--warn);border-color:#5d4b25}
+nav.steps{display:flex;gap:4px;margin-left:auto}
+nav.steps button{border-radius:16px;padding:4px 12px;background:transparent}
+nav.steps button.on{background:var(--panel2);border-color:var(--acc);color:#fff}
+nav.steps b{display:inline-block;width:18px;height:18px;border-radius:9px;background:#2a313c;font-size:11px;line-height:18px;text-align:center;margin-right:6px}
+nav.steps button.on b{background:var(--acc)}
+aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column}
+.sec{padding:12px 14px;border-bottom:1px solid var(--line)}
+.sec h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 8px;font-weight:600}
+.sec p.hint{color:var(--mute);margin:4px 0 8px;line-height:1.4}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px}
+.stat .v{font-size:18px;font-weight:650}
+.stat .k{color:var(--mute);font-size:11px}
+.list{display:flex;flex-direction:column;gap:6px}
+.blk{border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.blk .hd{display:flex;align-items:center;gap:8px;padding:7px 8px;cursor:pointer}
+.sw{width:12px;height:12px;border-radius:3px;flex:none}
+.blk .name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk .n{color:var(--mute);font-size:11px}
+.blk .body{padding:4px 8px 8px;border-top:1px solid var(--line)}
+.mem{display:grid;grid-template-columns:62px 1fr 64px;gap:6px;align-items:center;padding:3px 0;border-bottom:1px dashed #232a33}
+.mem:last-child{border-bottom:0}
+.mem .why{color:var(--mute);font-size:11px;grid-column:1/4;margin-top:-2px}
+.conf{height:5px;border-radius:3px;background:#262d37;position:relative;overflow:hidden}
+.conf i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.tag{font-size:10px;padding:1px 6px;border-radius:8px;background:#252c37;color:var(--mute)}
+.tag.manual,.tag.field{color:#9fd3ff}.tag.sheet{color:#c7a8ff}.tag.schematic{color:#ffb3e0}.tag.connectivity{color:#9fe0b8}.tag.heuristic{color:#f3cf8a}
+.rev{border:1px solid #4d3f22;background:#1f1b14;border-radius:8px;padding:7px 8px}
+.rev .t{display:flex;gap:6px;align-items:center}
+.rev .why{color:var(--mute);font-size:11px;margin:3px 0 5px}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:4px 4px;border-bottom:1px solid var(--line);font-size:12px}
+th{color:var(--mute);font-weight:500}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.better{color:var(--ok)}.worse{color:var(--bad)}
+main{position:relative;overflow:hidden;background:#0a0d11}
+svg#cv{width:100%;height:100%;display:block;cursor:grab}
+svg#cv.drag{cursor:grabbing}
+svg#cv.regiontool{cursor:crosshair}
+.toolbar{position:absolute;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap;background:rgba(22,26,32,.92);border:1px solid var(--line);border-radius:8px;padding:6px}
+.toolbar label{display:flex;gap:4px;align-items:center;color:var(--mute)}
+.legend{position:absolute;bottom:10px;left:10px;right:10px;display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}
+.legend span{background:rgba(22,26,32,.85);border:1px solid var(--line);padding:2px 8px;border-radius:10px;font-size:11px;display:flex;align-items:center;gap:5px}
+.toast{position:absolute;top:10px;right:10px;max-width:420px;background:#2a1717;border:1px solid #6b2e2e;color:#ffd3d3;padding:8px 12px;border-radius:8px;display:none}
+.busy{position:absolute;inset:0;background:rgba(10,13,17,.55);display:none;align-items:center;justify-content:center;font-size:15px}
+.busy.on{display:flex}
+#log{font-family:Consolas,monospace;font-size:11px;color:var(--mute);white-space:pre-wrap;max-height:160px;overflow:auto;background:#0f1319;border-radius:6px;padding:6px}
+.tip{position:absolute;pointer-events:none;background:#0f1319;border:1px solid var(--line);padding:6px 8px;border-radius:6px;font-size:12px;display:none;max-width:320px}
+.small{font-size:11px;color:var(--mute)}
+.spacer{flex:1}
+details summary{cursor:pointer;color:var(--mute)}
+.kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Footprint Placement Manager</h1>
+    <span class="board" id="boardName">—</span>
+    <span class="badge" id="mode">…</span>
+    <nav class="steps" id="steps"></nav>
+  </header>
+  <aside id="side"><div class="sec"><h2>Loading</h2><p class="hint">Reading the board from KiCad…</p></div></aside>
+  <main>
+    <svg id="cv"><g id="world"></g><rect id="rubber" fill="rgba(91,157,255,.12)" stroke="#5b9dff" stroke-dasharray="3 2" visibility="hidden"/></svg>
+    <div class="toolbar">
+      <button id="fitBtn" title="Fit board (F)">Fit</button>
+      <label><input type="checkbox" id="showRats" checked> Ratsnest</label>
+      <label><input type="checkbox" id="showPads" checked> Pads</label>
+      <label><input type="checkbox" id="showRefs" checked> Refs</label>
+      <label>Show <select id="showMode"><option value="both">current + proposal</option><option value="proposal">proposal</option><option value="current">current</option></select></label>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="toast" id="toast"></div>
+    <div class="tip" id="tip"></div>
+    <div class="busy" id="busy">Working…</div>
+  </main>
+</div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null;                    // server state
+let step = 1;
+let view = {x:0, y:0, k:4};      // screen = (world - [x,y]) * k
+let selected = new Set();
+let openBlocks = new Set();
+let tool = null;                 // {kind:'region', block}
+let comps = {};                  // ref -> component json
+let blockOf = {};                // ref -> block json
+const STEPS = ["Analyze","Review groups","Constraints","Preview & apply"];
+
+// ------------------------------------------------------------------ api
+async function api(path, body){
+  const busy = $("#busy"); busy.classList.add("on");
+  try{
+    const r = await fetch(path, body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const j = await r.json();
+    if (j.error) toast(j.error);
+    if (j.loaded !== undefined) setState(j);
+    return j;
+  } catch(e){ toast("Lost connection to the plugin. Re-run it from KiCad."); throw e; }
+  finally { busy.classList.remove("on"); }
+}
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.style.display="block"; clearTimeout(toast._t); toast._t=setTimeout(()=>t.style.display="none", 6000); }
+
+function setState(st){
+  const first = !S || !S.loaded;
+  S = st;
+  comps = {}; blockOf = {};
+  if (S.loaded){
+    for (const c of S.board.components) comps[c.ref] = c;
+    for (const b of S.blocks) for (const m of b.members) blockOf[m] = b;
+  }
+  $("#boardName").textContent = S.loaded ? S.board.name : "no board";
+  const md = $("#mode"); md.textContent = S.backend + (S.version && S.version!=="offline" ? " · " + S.version : "");
+  md.className = "badge " + (S.can_apply ? "live" : "off");
+  renderSteps(); renderSide(); draw();
+  if (first && S.loaded) fit();
+}
+
+// ------------------------------------------------------------------ steps / sidebar
+function renderSteps(){
+  $("#steps").innerHTML = STEPS.map((s,i)=>`<button class="${step===i+1?'on':''}" data-step="${i+1}"><b>${i+1}</b>${s}</button>`).join("");
+  $("#steps").querySelectorAll("button").forEach(b=>b.onclick=()=>{step=+b.dataset.step; tool=null; renderSteps(); renderSide(); draw();});
+}
+
+function confColor(c){ return c>=0.8? "var(--ok)" : c>=0.6? "#9fd36b" : c>=0.4? "var(--warn)" : "var(--bad)"; }
+function blockOptions(sel){
+  return `<option value="">(automatic)</option>` + S.blocks.map(b=>`<option value="${esc(b.id)}" ${b.id===sel?'selected':''}>${esc(b.name)}</option>`).join("") +
+    `<option value="__new">+ new block…</option>`;
+}
+
+function renderSide(){
+  const side = $("#side");
+  if (!S || !S.loaded){ side.innerHTML = `<div class="sec"><h2>No board</h2><p class="hint">Open a board in the PCB editor and press Analyze.</p><button class="primary" onclick="api('/api/analyze',{})">Analyze board</button></div>${logSec()}`; return; }
+  const parts = [stepIntro()];
+  if (step===1) parts.push(secSummary(), secReview());
+  if (step===2) parts.push(secBlocks(), secRepeated(), secTemplates());
+  if (step===3) parts.push(secLocks(), secBlockConstraints(), secRules());
+  if (step===4) parts.push(secOptions(), secMetrics(), secApply());
+  parts.push(logSec());
+  side.innerHTML = parts.join("");
+  bindSide();
+  const lg = $("#log"); if (lg) lg.scrollTop = lg.scrollHeight;
+}
+
+function stepIntro(){
+  const t = {
+    1:"Footprints are grouped by circuit function. Each assignment shows its evidence and confidence; low-confidence parts are listed for review.",
+    2:"Rename, merge or split blocks and move parts between them. Click parts on the canvas to select (Shift adds). Repeated channels can copy one finished arrangement.",
+    3:"Lock anchors, freeze finished blocks, draw placement regions, and set how much each net class matters.",
+    4:"Generate a proposal, inspect it against the current placement, drag parts to refine (R rotates), then apply all or chosen blocks. Applying is one KiCad undo step."
+  }[step];
+  return `<div class="sec"><p class="hint" style="margin:0">${t}</p></div>`;
+}
+
+function secSummary(){
+  const nets = new Set(); S.board.components.forEach(c=>c.pads.forEach(p=>p[1]&&nets.add(p[1])));
+  const mb = S.metrics_before || {};
+  return `<div class="sec"><h2>Board</h2>
+   <div class="grid4">
+    <div class="stat"><div class="v">${S.board.components.length}</div><div class="k">footprints</div></div>
+    <div class="stat"><div class="v">${nets.size}</div><div class="k">nets</div></div>
+    <div class="stat"><div class="v">${S.blocks.length}</div><div class="k">blocks</div></div>
+    <div class="stat"><div class="v" style="color:${S.review.length?'var(--warn)':'var(--ok)'}">${S.review.length}</div><div class="k">to review</div></div>
+   </div>
+   ${schemSec()}
+   <div class="row" style="margin-top:10px">
+    <button class="primary" data-act="analyze">Re-analyze board</button>
+    <span class="small">Signal ratsnest ${mb.signal_ratsnest_mm ?? "–"} mm · ${mb.crossings ?? "–"} crossings</span>
+   </div>
+   <details style="margin-top:10px"><summary>How blocks are found</summary>
+    <p class="hint">1. <b>CircuitBlock</b> / <b>PlaceNear</b> fields and your manual choices · 2. the schematic: drawn boxes (rectangles / text boxes, named by their text), hierarchical sheets, and how symbols are drawn and wired together on each sheet, named after the nearest heading · 3. connectivity, for parts the schematic leaves open (decoupling caps on IC rails, crystals, feedback dividers, series parts) · 4. reference, value, footprint and net-name heuristics. Net classes are <i>not</i> used for grouping.</p>
+   </details></div>`;
+}
+
+function schemSec(){
+  const si = S.schematic || {}; const st = si.stats || {};
+  const src = S.group_source || "schematic";
+  const file = (si.file||"").split(/[\\/]/).pop();
+  const info = si.error ? `<span style="color:var(--warn)">${esc(si.error)}</span>`
+    : `${esc(file)} · ${st.sheets||0} sheet(s), ${st.boxes||0} drawn box(es), ${st.groups||0} groups · ${st.matched||0} footprints matched`;
+  return `<div class="row" style="margin-top:10px"><label>Group by <select id="grpSrc">
+      <option value="schematic" ${src==="schematic"?"selected":""}>Schematic (boxes, sheets, layout)</option>
+      <option value="connectivity" ${src==="connectivity"?"selected":""}>Connectivity only</option></select></label></div>
+    <p class="small" style="margin:6px 0 0">${info}</p>`;
+}
+
+function secReview(){
+  if (!S.review.length) return `<div class="sec"><h2>Needs review</h2><p class="hint">Nothing uncertain. Check groups in step 2.</p></div>`;
+  return `<div class="sec"><h2>Needs review (${S.review.length})</h2><div class="list">` + S.review.map(a=>{
+    const c = comps[a.ref];
+    return `<div class="rev" data-ref="${esc(a.ref)}"><div class="t"><b class="pick">${esc(a.ref)}</b><span class="small">${esc(c?.value||"")}</span>
+      <span class="spacer"></span><span class="small" style="color:${confColor(a.confidence)}">${Math.round(a.confidence*100)}%</span></div>
+      <div class="why">${esc(a.reason)}</div>
+      <div class="row"><select data-reassign="${esc(a.ref)}">${blockOptions(a.block)}</select>
+      <button data-confirm="${esc(a.ref)}" title="Keep the suggested block">Accept</button></div></div>`;
+  }).join("") + `</div><div class="row" style="margin-top:8px"><button data-act="confirmall">Accept all suggestions</button></div></div>`;
+}
+
+function secBlocks(){
+  const selN = selected.size;
+  return `<div class="sec"><h2>Blocks</h2>
+   <div class="row" style="margin-bottom:8px">
+     <button data-act="merge" title="Merge the ticked blocks">Merge ticked</button>
+     <button data-act="split" ${selN?'':'disabled'} title="Move the selected parts into a new block">Split selection (${selN})</button>
+     <button data-act="resetgroups" class="danger" title="Forget manual groups">Reset manual</button>
+   </div>
+   <div class="list">` + S.blocks.map(b=>{
+     const open = openBlocks.has(b.id);
+     const conf = b.members.reduce((s,m)=>s+(S.assign[m]?.confidence||0),0)/Math.max(1,b.members.length);
+     return `<div class="blk"><div class="hd" data-toggle="${esc(b.id)}">
+       <input type="checkbox" data-tick="${esc(b.id)}" onclick="event.stopPropagation()">
+       <span class="sw" style="background:${b.color}"></span>
+       <span class="name" title="${esc(b.name)}">${esc(b.name)}</span>
+       <span class="n">${b.members.length}</span>
+       <div class="conf" style="width:38px"><i style="width:${conf*100}%;background:${confColor(conf)}"></i></div>
+     </div>` + (open ? `<div class="body">
+       <div class="row" style="margin:6px 0"><input type="text" value="${esc(b.name)}" data-rename="${esc(b.id)}" style="flex:1">
+         <button data-kisel="${esc(b.id)}" title="Select these footprints in KiCad">Select in KiCad</button></div>
+       <div class="small" style="margin-bottom:4px">Anchor ${esc(b.anchor||"–")} · ${esc(b.kind)} · source: ${esc(b.source)}</div>
+       ${b.members.map(m=>{const a=S.assign[m]; const c=comps[m];
+         return `<div class="mem"><b class="pick" data-ref="${esc(m)}" style="cursor:pointer">${esc(m)}</b>
+          <span class="small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c?.value||"")}</span>
+          <select data-reassign="${esc(m)}" style="width:64px">${blockOptions(a.block)}</select>
+          <div class="why"><span class="tag ${a.evidence}">${a.evidence}</span> <span style="color:${confColor(a.confidence)}">${Math.round(a.confidence*100)}%</span> · ${esc(a.reason)}</div></div>`;}).join("")}
+     </div>` : "") + `</div>`;
+   }).join("") + `</div></div>`;
+}
+
+function secRepeated(){
+  if (!S.repeated.length) return `<div class="sec"><h2>Repeated channels</h2><p class="hint">No matching blocks found.</p></div>`;
+  return `<div class="sec"><h2>Repeated channels</h2><p class="hint">Arrange one channel, then copy its relative placement onto the others (parts are matched by value, footprint and anchor pins). The result goes into the proposal for preview.</p>` +
+    S.repeated.map((g,i)=>`<div class="row" style="margin-bottom:6px"><select data-repsrc="${i}">${g.map(id=>`<option value="${esc(id)}">${esc(S.blocks.find(b=>b.id===id)?.name||id)}</option>`).join("")}</select>
+     <button data-rep="${i}">Copy to ${g.length-1} other${g.length>2?'s':''}</button></div>`).join("") + `</div>`;
+}
+
+function secTemplates(){
+  const opts = S.blocks.filter(b=>b.anchor).map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("");
+  return `<div class="sec"><h2>Circuit templates</h2><p class="hint">Save a finished regulator, driver or channel and reuse it on another block.</p>
+   <div class="row"><select id="tplBlock" style="max-width:220px">${opts}</select><input type="text" id="tplName" placeholder="template name" style="width:110px"><button data-act="tplsave">Save</button></div>
+   ${S.templates.length ? `<table style="margin-top:8px">${S.templates.map(t=>`<tr><td>${esc(t.name)}</td><td class="small">${esc(t.anchor.value||"")} · ${t.parts} parts</td><td><button data-tplapply="${esc(t.file)}">Apply to chosen</button></td></tr>`).join("")}</table>` : `<p class="small">No templates saved yet.</p>`}
+  </div>`;
+}
+
+function secLocks(){
+  const L = S.locked;
+  const kicadLocked = S.board.components.filter(c=>c.locked).map(c=>c.ref);
+  return `<div class="sec"><h2>Anchors &amp; locks</h2>
+   <p class="hint">Locked footprints never move. Footprints locked in KiCad are always respected. Connectors already on the board stay fixed unless you turn that off in step 4.</p>
+   <div class="row"><button data-act="lock" ${selected.size?'':'disabled'}>Lock selection (${selected.size})</button><button data-act="unlock" ${selected.size?'':'disabled'}>Unlock selection</button></div>
+   <p class="small" style="margin-top:8px">Locked here: ${L.length? L.map(esc).join(", ") : "none"}<br>Locked in KiCad: ${kicadLocked.length? kicadLocked.map(esc).join(", "):"none"}</p></div>`;
+}
+
+function secBlockConstraints(){
+  return `<div class="sec"><h2>Blocks</h2><table><tr><th></th><th>Block</th><th>Freeze</th><th>Region</th></tr>` +
+   S.blocks.map(b=>`<tr><td><span class="sw" style="background:${b.color};display:inline-block"></span></td><td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(b.name)}">${esc(b.name)}</td>
+     <td><input type="checkbox" data-freeze="${esc(b.id)}" ${b.frozen?'checked':''} title="Keep its current arrangement"></td>
+     <td>${b.region ? `<span class="small">${esc(b.region.source==='kicad-rule-area'?'KiCad area':'drawn')}</span> <button data-clearregion="${esc(b.id)}">×</button>` : ""}
+       <button data-drawregion="${esc(b.id)}" class="${tool&&tool.block===b.id?'primary':''}">Draw</button></td></tr>`).join("") +
+   `</table><p class="hint">Draw: drag a rectangle on the canvas. KiCad placement rule areas tied to a sheet are picked up automatically.</p></div>`;
+}
+
+function secRules(){
+  const R = S.rules;
+  const rows = Object.entries(R.rules).map(([n,r])=>`<tr data-nc="${esc(n)}"><td>${esc(n)}</td>
+    <td><input type="number" step="0.1" min="0" data-k="weight" value="${r.weight}" title="Importance of short connections"></td>
+    <td><input type="number" step="0.1" min="0" data-k="spacing" value="${r.spacing}" title="Extra routing room around parts (mm)"></td>
+    <td><input type="number" step="1" min="0" data-k="max_length" value="${r.max_length}" title="Max connection length target (mm), 0 = none"></td>
+    <td><input type="checkbox" data-k="noisy" ${r.noisy?'checked':''}></td><td><input type="checkbox" data-k="sensitive" ${r.sensitive?'checked':''}></td>
+    <td><input type="number" step="0.5" min="0" data-k="pair_weight" value="${r.pair_weight}" title="Differential pair / bus pull"></td></tr>`).join("");
+  return `<div class="sec"><h2>Net-class priorities</h2>
+   <p class="hint">Net classes set <i>how much</i> a connection matters, never which block a part belongs to.</p>
+   <div style="overflow-x:auto"><table id="rulesT"><tr><th>Class</th><th>Weight</th><th>Room</th><th>Max mm</th><th>Noisy</th><th>Sensitive</th><th>Pair</th></tr>${rows}</table></div>
+   <div class="row" style="margin-top:8px">
+     <label class="small">GND pull <input type="number" step="0.01" id="gndW" value="${R.gnd_weight}"></label>
+     <label class="small">Rail pull <input type="number" step="0.01" id="pwrW" value="${R.pwr_weight}"></label>
+     <label class="small">Decoupling <input type="number" step="0.5" id="decW" value="${R.decap_weight}"></label>
+   </div>
+   <p class="hint">Ground and power nets get a tiny whole-net pull so they don't collapse the board into one cluster; decoupling caps are pulled to their own IC's supply pins instead.</p>
+   <button data-act="saverules">Save priorities</button></div>`;
+}
+
+function secOptions(){
+  const o = S.options;
+  const sc = (v,l)=>`<option value="${v}" ${o.scope===v?'selected':''}>${l}</option>`;
+  const ticked = o.blocks||[];
+  return `<div class="sec"><h2>Proposal</h2>
+   <div class="row"><label>Place <select id="optScope">${sc("all","all unlocked parts")}${sc("new","only new / off-board parts")}${sc("blocks","chosen blocks")}${sc("kicad_selection","KiCad selection")}${sc("selection","canvas selection")}</select></label></div>
+   <div id="optBlocks" style="display:${o.scope==='blocks'?'block':'none'};margin-top:6px;max-height:140px;overflow:auto">${S.blocks.map(b=>`<label class="row small"><input type="checkbox" data-optblock="${esc(b.id)}" ${ticked.includes(b.id)?'checked':''}><span class="sw" style="background:${b.color}"></span>${esc(b.name)}</label>`).join("")}</div>
+   <div class="row" style="margin-top:8px">
+    <label class="small"><input type="checkbox" id="optConn" ${o.keep_connectors_fixed?'checked':''}> keep placed connectors</label>
+    <label class="small"><input type="checkbox" id="optRot" ${o.allow_rotation?'checked':''}> allow rotation</label>
+   </div>
+   <div class="row" style="margin-top:6px">
+    <label class="small">Clearance <input type="number" step="0.05" id="optClr" value="${o.clearance}"></label>
+    <label class="small">Routing room × <input type="number" step="0.1" id="optRoom" value="${o.routing_space}"></label>
+   </div>
+   <div class="row" style="margin-top:6px">
+    <label class="small">Stay-put pull <input type="number" step="0.05" id="optDisp" value="${o.displacement_weight}"></label>
+    <label class="small">Effort <input type="number" step="0.25" id="optEff" value="${o.effort}"></label>
+    <label class="small">Noisy gap <input type="number" step="0.5" id="optSep" value="${o.separation}"></label>
+   </div>
+   <div class="row" style="margin-top:10px"><button class="primary" data-act="propose">Generate proposal</button>
+     <button data-act="clearprop" ${Object.keys(S.proposal).length?'':'disabled'}>Clear</button>
+     <span class="small">${Object.keys(S.proposal).length} moves</span></div></div>`;
+}
+
+function secMetrics(){
+  const a = S.metrics_before, b = S.metrics_after;
+  if (!a) return "";
+  const rows = [["Signal ratsnest (mm)","signal_ratsnest_mm"],["All ratsnest (mm)","all_ratsnest_mm"],["Ratsnest crossings","crossings"],
+    ["Congestion peak","congestion_max"],["Congestion 95%","congestion_p95"],["Overfull cells","congestion_overflow_cells"],["Courtyard overlaps","overlaps"]];
+  const cell = (k) => {
+    if (!b) return `<td class="num">–</td><td></td>`;
+    const d = b[k]-a[k]; const cls = d<0?'better':d>0?'worse':'';
+    return `<td class="num">${b[k]}</td><td class="num ${cls}">${d===0?'':(d>0?'+':'')+(Math.round(d*100)/100)}</td>`;
+  };
+  const oob = (m)=> (m?.out_of_board||[]).length;
+  return `<div class="sec"><h2>Estimated quality</h2><table><tr><th>Metric</th><th class="num">Current</th><th class="num">Proposal</th><th class="num">Δ</th></tr>
+   ${rows.map(([l,k])=>`<tr><td>${l}</td><td class="num">${a[k]}</td>${cell(k)}</tr>`).join("")}
+   <tr><td>Off-board parts</td><td class="num">${oob(a)}</td><td class="num">${b?oob(b):'–'}</td><td></td></tr></table>
+   ${b && b.critical_over_target.length ? `<p class="small" style="margin-top:6px;color:var(--warn)">Over length target: ${b.critical_over_target.slice(0,8).map(c=>esc(c.net)+" "+c.length+"/"+c.target).join(", ")}</p>`:""}
+   <p class="hint">Estimates only. Routing time and the finished board are the real test.</p></div>`;
+}
+
+function secApply(){
+  const P = S.proposal; const n = Object.keys(P).length;
+  const per = {}; for (const r in P){ const b = blockOf[r]; if (b) per[b.id]=(per[b.id]||0)+1; }
+  const live = S.can_apply;
+  return `<div class="sec"><h2>Apply</h2>
+   ${n? `<div class="list" style="max-height:220px;overflow:auto">${S.blocks.filter(b=>per[b.id]).map(b=>`<label class="row"><input type="checkbox" data-applyblk="${esc(b.id)}" checked><span class="sw" style="background:${b.color}"></span><span style="flex:1">${esc(b.name)}</span><span class="small">${per[b.id]} moves</span></label>`).join("")}</div>`
+       : `<p class="hint">No proposal yet.</p>`}
+   <div class="row" style="margin-top:8px">
+     <button class="primary" data-act="applysel" ${n?'':'disabled'}>Apply ticked blocks</button>
+     <button data-act="applyall" ${n?'':'disabled'}>Apply all</button>
+     <button data-act="undo" ${S.undo_depth?'':'disabled'}>Undo (${S.undo_depth})</button>
+   </div>
+   <p class="hint">${live? "Each apply is a single step in KiCad's undo history too (Ctrl+Z works)." : "Offline mode: the .kicad_pcb file is never modified. Run the plugin from KiCad to apply."}</p></div>`;
+}
+
+function logSec(){ return `<div class="sec" style="margin-top:auto"><h2>Log</h2><div id="log">${esc((S?.logs||[]).join("\n"))}</div>
+  <div class="row" style="margin-top:6px"><span class="small" title="${esc(S?.settings_file||"")}">Decisions saved to ${esc((S?.settings_file||"").split(/[\\/]/).pop())}</span><span class="spacer"></span><button data-act="quit" title="Stop the plugin process">Close</button></div></div>`; }
+
+function bindSide(){
+  const side = $("#side");
+  side.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>act(b.dataset.act));
+  side.querySelectorAll("[data-toggle]").forEach(h=>h.onclick=()=>{const id=h.dataset.toggle; openBlocks.has(id)?openBlocks.delete(id):openBlocks.add(id); renderSide(); highlightBlock(id);});
+  side.querySelectorAll("[data-reassign]").forEach(s=>s.onchange=async()=>{
+    let block = s.value;
+    if (block==="__new"){ const name = prompt("Name for the new block:","New block"); if(!name) return renderSide(); return api("/api/edit",{op:"create",name,refs:[s.dataset.reassign]}); }
+    api("/api/edit",{op:"reassign",refs:[s.dataset.reassign],block});
+  });
+  side.querySelectorAll("[data-confirm]").forEach(b=>b.onclick=()=>api("/api/edit",{op:"confirm",refs:[b.dataset.confirm]}));
+  side.querySelectorAll("[data-rename]").forEach(i=>i.onchange=()=>api("/api/edit",{op:"rename",block:i.dataset.rename,name:i.value}));
+  side.querySelectorAll("[data-kisel]").forEach(b=>b.onclick=()=>{const bl=S.blocks.find(x=>x.id===b.dataset.kisel); api("/api/select",{refs:bl.members});});
+  side.querySelectorAll(".pick").forEach(p=>p.onclick=(e)=>{const r=p.dataset.ref||p.textContent; if(!e.shiftKey) selected.clear(); selected.add(r); centerOn(r); draw(); });
+  side.querySelectorAll("[data-rep]").forEach(b=>b.onclick=()=>{const g=S.repeated[+b.dataset.rep]; const src=side.querySelector(`[data-repsrc="${b.dataset.rep}"]`).value; step=4; api("/api/replicate",{source:src,targets:g});});
+  side.querySelectorAll("[data-tplapply]").forEach(b=>b.onclick=()=>api("/api/template/apply",{block:$("#tplBlock").value,file:b.dataset.tplapply}));
+  side.querySelectorAll("[data-freeze]").forEach(c=>c.onchange=()=>api("/api/edit",{op:"freeze",block:c.dataset.freeze,value:c.checked}));
+  side.querySelectorAll("[data-clearregion]").forEach(b=>b.onclick=()=>api("/api/edit",{op:"region",block:b.dataset.clearregion,region:null}));
+  side.querySelectorAll("[data-drawregion]").forEach(b=>b.onclick=()=>{tool = (tool&&tool.block===b.dataset.drawregion)? null : {kind:"region",block:b.dataset.drawregion}; $("#cv").classList.toggle("regiontool",!!tool); renderSide();});
+  const gs = $("#grpSrc"); if (gs) gs.onchange=()=>api("/api/group_source",{source:gs.value});
+  const sc = $("#optScope"); if (sc) sc.onchange=()=>{$("#optBlocks").style.display = sc.value==="blocks"?"block":"none";};
+}
+
+function readOptions(){
+  return {
+    scope: $("#optScope").value,
+    blocks: [...document.querySelectorAll("[data-optblock]")].filter(c=>c.checked).map(c=>c.dataset.optblock),
+    refs: [...selected],
+    keep_connectors_fixed: $("#optConn").checked, allow_rotation: $("#optRot").checked,
+    clearance: +$("#optClr").value, routing_space: +$("#optRoom").value,
+    displacement_weight: +$("#optDisp").value, effort: +$("#optEff").value, separation: +$("#optSep").value,
+  };
+}
+
+async function act(a){
+  if (a==="analyze") return api("/api/analyze",{});
+  if (a==="confirmall") return api("/api/edit",{op:"confirm",refs:S.review.map(r=>r.ref)});
+  if (a==="merge"){ const ids=[...document.querySelectorAll("[data-tick]")].filter(c=>c.checked).map(c=>c.dataset.tick); if(ids.length<2) return toast("Tick two or more blocks to merge."); return api("/api/edit",{op:"merge",blocks:ids}); }
+  if (a==="split"){ const name=prompt("Name for the new block:","New block"); if(!name) return; return api("/api/edit",{op:"split",name,refs:[...selected]}); }
+  if (a==="resetgroups"){ if(!confirm("Forget all manual block assignments, names and splits?")) return; return api("/api/edit",{op:"reset_groups"}); }
+  if (a==="tplsave"){ const name=$("#tplName").value.trim(); if(!name) return toast("Give the template a name."); return api("/api/template/save",{block:$("#tplBlock").value,name}); }
+  if (a==="lock"||a==="unlock") return api("/api/edit",{op:"lock",refs:[...selected],value:a==="lock"});
+  if (a==="saverules"){
+    const rules={};
+    document.querySelectorAll("#rulesT tr[data-nc]").forEach(tr=>{const r={}; tr.querySelectorAll("[data-k]").forEach(i=>r[i.dataset.k]= i.type==="checkbox"? i.checked : +i.value); rules[tr.dataset.nc]=r;});
+    return api("/api/rules",{...S.rules, rules, gnd_weight:+$("#gndW").value, pwr_weight:+$("#pwrW").value, decap_weight:+$("#decW").value});
+  }
+  if (a==="propose"){ const o=readOptions(); if(o.scope==="selection"&&!o.refs.length) return toast("Select parts on the canvas first."); return api("/api/propose",o); }
+  if (a==="clearprop") return api("/api/clear_proposal",{});
+  if (a==="applyall") return api("/api/apply",{});
+  if (a==="applysel"){ const ids=[...document.querySelectorAll("[data-applyblk]")].filter(c=>c.checked).map(c=>c.dataset.applyblk); return api("/api/apply",{blocks:ids}); }
+  if (a==="undo") return api("/api/undo",{});
+  if (a==="quit"){ await fetch("/api/shutdown",{method:"POST"}); document.body.innerHTML="<p style='padding:30px'>Placement manager closed. Run it again from KiCad's toolbar.</p>"; }
+}
+
+// ------------------------------------------------------------------ canvas
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; }
+function W2S(x,y){ return [(x-view.x)*view.k, (y-view.y)*view.k]; }
+function S2W(sx,sy){ return [sx/view.k+view.x, sy/view.k+view.y]; }
+function applyView(){ $("#world").setAttribute("transform",`scale(${view.k}) translate(${-view.x} ${-view.y})`); }
+
+function fit(){
+  if (!S||!S.loaded) return;
+  let o = S.board.outline;
+  let x0,y0,x1,y1;
+  const all = S.board.components;
+  if (o){ x0=o.x0;y0=o.y0;x1=o.x1;y1=o.y1; } else { x0=Math.min(...all.map(c=>c.x)); x1=Math.max(...all.map(c=>c.x)); y0=Math.min(...all.map(c=>c.y)); y1=Math.max(...all.map(c=>c.y)); }
+  // include parked parts
+  for (const c of all){ const p=posOf(c.ref); x0=Math.min(x0,p[0]-2); x1=Math.max(x1,p[0]+2); y0=Math.min(y0,p[1]-2); y1=Math.max(y1,p[1]+2);}
+  const r = $("#cv").getBoundingClientRect();
+  const k = Math.min(r.width/(x1-x0+10), (r.height-40)/(y1-y0+10));
+  view.k = k; view.x = (x0+x1)/2 - r.width/2/k; view.y = (y0+y1)/2 - r.height/2/k;
+  applyView();
+}
+function centerOn(ref){ const p=posOf(ref); const r=$("#cv").getBoundingClientRect(); view.x=p[0]-r.width/2/view.k; view.y=p[1]-r.height/2/view.k; applyView(); }
+function posOf(ref){ const P=S.proposal[ref]; if(P && $("#showMode").value!=="current") return P; const c=comps[ref]; return [c.x,c.y,c.rot]; }
+
+function compGroup(c, x, y, rot, parent, ghost){
+  const b = blockOf[c.ref]; const col = b? b.color : "#888";
+  const g = el("g",{transform:`translate(${x} ${y}) rotate(${-rot})`, "data-ref":c.ref, class:"comp"}, parent);
+  const [a,bb,cc,d] = c.ext;
+  const sel = selected.has(c.ref);
+  el("rect",{x:a,y:bb,width:cc-a,height:d-bb, rx:Math.min(0.3,(cc-a)/6),
+     fill: ghost? "none" : col, "fill-opacity": c.side==="B"?0.18:0.32,
+     stroke: sel? "#fff" : col, "stroke-width": (sel?2.2:1)/view.k, "stroke-dasharray": ghost? `${3/view.k} ${2/view.k}` : (c.side==="B"? `${5/view.k} ${2/view.k}`:"none"),
+     opacity: ghost? 0.55: 1}, g);
+  if ($("#showPads").checked && !ghost){
+    for (const p of c.pads){ el("rect",{x:p[2]-p[4]/2,y:p[3]-p[5]/2,width:p[4],height:p[5],fill: c.side==="B"?"#4d7fbf":"#c9a24a", opacity:.8}, g); }
+  }
+  if ((c.locked || S.locked.includes(c.ref)) && !ghost){
+    el("circle",{cx:a+0.6,cy:bb+0.6,r:0.45,fill:"#ff6b6b"},g);
+  }
+  return g;
+}
+
+function draw(){
+  const w = $("#world"); w.innerHTML = "";
+  if (!S||!S.loaded) return;
+  applyView();
+  const B = S.board;
+  const mode = $("#showMode").value;
+  const lay = n=>el("g",{id:n},w);
+  const gBoard=lay("gBoard"), gReg=lay("gReg"), gGhost=lay("gGhost"), gComp=lay("gComp"), gArrow=lay("gArrow"), gRats=lay("gRats"), gTxt=lay("gTxt");
+  if (B.outline){ const o=B.outline; el("rect",{x:o.x0,y:o.y0,width:o.x1-o.x0,height:o.y1-o.y0,fill:"var(--board)"},gBoard); }
+  for (const s of B.outline_segments) el("line",{x1:s[0],y1:s[1],x2:s[2],y2:s[3],stroke:"var(--edge)","stroke-width":1.4/view.k},gBoard);
+  for (const k of B.keepouts) el("rect",{x:k.x0,y:k.y0,width:k.x1-k.x0,height:k.y1-k.y0,fill:"rgba(255,90,90,.12)",stroke:"#ff6b6b","stroke-dasharray":`${4/view.k} ${3/view.k}`,"stroke-width":1/view.k},gReg);
+  for (const b of S.blocks) if (b.region){ const r=b.region; el("rect",{x:r.x0,y:r.y0,width:r.x1-r.x0,height:r.y1-r.y0,fill:"none",stroke:b.color,"stroke-width":1.5/view.k,"stroke-dasharray":`${6/view.k} ${3/view.k}`},gReg);
+    const t=el("text",{x:r.x0+0.5,y:r.y0-0.6,fill:b.color,"font-size":11/view.k},gReg); t.textContent=b.name; }
+  const P = S.proposal;
+  for (const c of B.components){
+    const p = P[c.ref];
+    if (p && mode==="both"){ compGroup(c,c.x,c.y,c.rot,gGhost,true);
+      el("line",{x1:c.x,y1:c.y,x2:p[0],y2:p[1],stroke:"#7f8ba0","stroke-width":0.8/view.k,opacity:.5},gArrow); }
+    const [x,y,r] = (p && mode!=="current")? p : [c.x,c.y,c.rot];
+    compGroup(c,x,y,r,gComp,false);
+    if ($("#showRefs").checked && view.k>2.2){
+      const t=el("text",{x,y,fill:"#e8edf5","font-size":Math.max(0.6,Math.min(1.6,(c.ext[2]-c.ext[0])*0.35)), "text-anchor":"middle","dominant-baseline":"central","pointer-events":"none",opacity:.9},gTxt); t.textContent=c.ref;
+    }
+  }
+  if ($("#showRats").checked) drawRats(gRats);
+  drawLegend();
+}
+
+function padWorld(c, p, pos){ const [x,y,r]=pos; const a=r*Math.PI/180, co=Math.cos(a), si=Math.sin(a); return [x+p[2]*co+p[3]*si, y-p[2]*si+p[3]*co]; }
+const GND=/^(\/.*\/)?(A|D|P|S)?(GND|VSS|VEE|GROUND|0V|EARTH)[A-Z0-9_]*$/i, PWR=/^(\/.*\/)?(\+.*|[-+]?\d+(\.\d+)?V\d*.*|V(CC|DD|BUS|IN|BAT|SYS|M|IO|CORE)[A-Z0-9_]*)$/i;
+function drawRats(g){
+  const nets = {};
+  for (const c of S.board.components){ const pos=posOf(c.ref); for (const p of c.pads){ if(!p[1]||GND.test(p[1])||PWR.test(p[1])) continue; (nets[p[1]]=nets[p[1]]||[]).push(padWorld(c,p,pos)); } }
+  let d = "";
+  for (const n in nets){ const pts=nets[n]; if(pts.length<2||pts.length>60) continue;
+    // Prim MST
+    const inT=new Array(pts.length).fill(false), best=new Array(pts.length).fill(Infinity), par=new Array(pts.length).fill(-1); best[0]=0;
+    for (let it=0; it<pts.length; it++){ let u=-1,bu=Infinity; for(let i=0;i<pts.length;i++) if(!inT[i]&&best[i]<bu){u=i;bu=best[i];}
+      inT[u]=true; if(par[u]>=0) d+=`M${pts[par[u]][0]} ${pts[par[u]][1]}L${pts[u][0]} ${pts[u][1]}`;
+      for(let v=0;v<pts.length;v++) if(!inT[v]){ const dd=Math.hypot(pts[v][0]-pts[u][0],pts[v][1]-pts[u][1]); if(dd<best[v]){best[v]=dd;par[v]=u;} } }
+  }
+  el("path",{d,stroke:"#9fb4d0","stroke-width":0.7/view.k,fill:"none",opacity:.55},g);
+}
+function drawLegend(){
+  const used = S.blocks.slice(0,14);
+  $("#legend").innerHTML = used.map(b=>`<span><i class="sw" style="background:${b.color}"></i>${esc(b.name)}</span>`).join("") +
+    (Object.keys(S.proposal).length? `<span>dashed outline = current position</span>`:"");
+}
+function highlightBlock(id){ const b=S.blocks.find(x=>x.id===id); if(!b) return; selected=new Set(b.members); draw(); }
+
+// pan / zoom / select / drag
+const cv = $("#cv");
+let drag = null;
+cv.addEventListener("wheel", e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(); const [wx,wy]=S2W(e.clientX-r.left,e.clientY-r.top);
+  view.k *= Math.exp(-e.deltaY*0.0015); view.k=Math.max(0.3,Math.min(200,view.k)); view.x = wx-(e.clientX-r.left)/view.k; view.y = wy-(e.clientY-r.top)/view.k; draw(); }, {passive:false});
+cv.addEventListener("mousedown", e=>{
+  const r=cv.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; const [wx,wy]=S2W(sx,sy);
+  if (tool && tool.kind==="region"){ drag={kind:"region",x0:wx,y0:wy,sx,sy}; return; }
+  const g = e.target.closest && e.target.closest("g.comp");
+  if (g && g.parentNode.id==="gComp"){
+    const ref = g.dataset.ref;
+    if (e.shiftKey){ selected.has(ref)?selected.delete(ref):selected.add(ref); renderSide(); draw(); return; }
+    if (!selected.has(ref)){ selected=new Set([ref]); renderSide(); }
+    if (step===4 && !(comps[ref].locked||S.locked.includes(ref))){
+      const start={}; for (const s of selected) start[s]=posOf(s).slice();
+      drag={kind:"move",wx,wy,start,moved:false};
+    } else draw();
+    return;
+  }
+  if (!e.shiftKey && selected.size){ selected.clear(); renderSide(); }
+  drag={kind:"pan",sx,sy,vx:view.x,vy:view.y,box:e.shiftKey}; cv.classList.add("drag");
+});
+window.addEventListener("mousemove", e=>{
+  const r=cv.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  tipAt(e, sx, sy);
+  if (!drag) return;
+  const [wx,wy]=S2W(sx,sy);
+  if (drag.kind==="pan"){ view.x = drag.vx-(sx-drag.sx)/view.k; view.y = drag.vy-(sy-drag.sy)/view.k; applyView(); }
+  if (drag.kind==="region"){ const rb=$("#rubber"); rb.setAttribute("visibility","visible"); rb.setAttribute("x",Math.min(sx,drag.sx)); rb.setAttribute("y",Math.min(sy,drag.sy)); rb.setAttribute("width",Math.abs(sx-drag.sx)); rb.setAttribute("height",Math.abs(sy-drag.sy)); }
+  if (drag.kind==="move"){ const dx=wx-drag.wx, dy=wy-drag.wy; drag.moved=true;
+    for (const s in drag.start){ const p=drag.start[s]; S.proposal[s]=[Math.round((p[0]+dx)*20)/20, Math.round((p[1]+dy)*20)/20, p[2]]; } draw(); }
+});
+window.addEventListener("mouseup", e=>{
+  if (!drag) return; const d=drag; drag=null; cv.classList.remove("drag");
+  if (d.kind==="region"){ $("#rubber").setAttribute("visibility","hidden"); const r=cv.getBoundingClientRect(); const [wx,wy]=S2W(e.clientX-r.left,e.clientY-r.top);
+    const blk=tool.block; tool=null; cv.classList.remove("regiontool");
+    if (Math.abs(wx-d.x0)>1 && Math.abs(wy-d.y0)>1) api("/api/edit",{op:"region",block:blk,region:{x0:d.x0,y0:d.y0,x1:wx,y1:wy}}); else renderSide(); }
+  if (d.kind==="move" && d.moved){ const moves={}; for (const s in d.start) moves[s]=S.proposal[s]; api("/api/proposal",{moves}); }
+});
+window.addEventListener("keydown", e=>{
+  if (e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
+  if (e.key==="f"||e.key==="F") fit();
+  if ((e.key==="r"||e.key==="R") && step===4 && selected.size){ const moves={}; for (const s of selected){ if (comps[s].locked||S.locked.includes(s)) continue; const p=posOf(s); moves[s]=[p[0],p[1],((p[2]+90+180)%360)-180]; } api("/api/proposal",{moves}); }
+  if (e.key==="Escape"){ selected.clear(); tool=null; cv.classList.remove("regiontool"); renderSide(); draw(); }
+});
+function tipAt(e, sx, sy){
+  const tip=$("#tip"); const g = e.target.closest && e.target.closest("g.comp");
+  if (!g || drag){ tip.style.display="none"; return; }
+  const c=comps[g.dataset.ref]; const a=S.assign[c.ref]; const b=blockOf[c.ref];
+  tip.innerHTML = `<b>${esc(c.ref)}</b> ${esc(c.value)}<br><span class="small">${esc(c.footprint)}</span><br><span class="sw" style="display:inline-block;background:${b?.color}"></span> ${esc(b?.name||"")} · ${Math.round((a?.confidence||0)*100)}%<br><span class="small">${esc(a?.reason||"")}</span>`;
+  tip.style.display="block"; tip.style.left=(sx+16)+"px"; tip.style.top=(sy+16)+"px";
+}
+$("#fitBtn").onclick=fit;
+["showRats","showPads","showRefs","showMode"].forEach(id=>$("#"+id).onchange=draw);
+window.addEventListener("resize", draw);
+setInterval(()=>fetch("/api/ping").catch(()=>{}), 30000);
+api("/api/state");
+</script>
+</body>
+</html>

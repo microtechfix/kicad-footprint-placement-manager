@@ -14,8 +14,11 @@ used to group parts. They only say how much a connection matters.
 1. In KiCad: **Preferences → Plugins**, turn on **Enable KiCad API** and set the
    Python interpreter to KiCad's bundled one:
    `C:\Program Files\KiCad\10.0\bin\pythonw.exe`
-2. Copy this whole folder into your KiCad plugins folder, e.g.
-   `C:\Users\<you>\Documents\KiCad\10.0\plugins\FootprintPlacementManager\`
+2. Download `FootprintPlacementManager-<version>.zip` from the
+   [latest release](https://github.com/microtechfix/kicad-footprint-placement-manager/releases/latest)
+   and extract it into your KiCad plugins folder, so you get
+   `C:\Users\<you>\Documents\KiCad\10.0\plugins\FootprintPlacementManager\plugin.json`.
+   (Updating: close KiCad, delete the old `FootprintPlacementManager` folder, extract the new one.)
 3. Restart the PCB editor. KiCad creates a private Python environment for the
    plugin and installs `kicad-python` from `requirements.txt` (first run needs
    internet and can take a minute).
@@ -272,7 +275,7 @@ tests/                 workflow test on KiCad demo boards, mocked IPC test
 ## Versions and copies
 
 - The window title and the first log line show the version and the folder the
-  plugin runs from, e.g. `Footprint Placement Manager 0.5.0 running from …`.
+  plugin runs from, e.g. `Footprint Placement Manager 0.6.0 running from …`.
 - **Auto place** never uses AI suggestions. **AI auto place** collects fresh
   suggestions and uses all of them. *Generate proposal* in step 4 uses the
   suggestions ticked in step 5 only when *Use the AI suggestions* is ticked.

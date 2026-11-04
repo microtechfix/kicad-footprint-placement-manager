@@ -36,6 +36,7 @@ sys.path.insert(0, ROOT)
 
 from fpm import metrics as fm                       # noqa: E402
 from fpm import pcb_write                           # noqa: E402
+from fpm.placer import layout_score, layout_issues                # noqa: E402
 from fpm.kicad_ipc import FileBackend               # noqa: E402
 from fpm.session import Session                     # noqa: E402
 import fpm.session as fsession                      # noqa: E402
@@ -119,6 +120,8 @@ def run_board(board, args, placed_dir):
                              "status": f"skipped ({n} parts)"})
                 break
             human = summarise(fm.evaluate(s.board, s.rules, {}))
+            base = layout_issues(s.board, {})                                # before any scrambling
+            human_score = round(layout_score(s.board, s.rules, {}, base=base)[0], 1)
             opts = {"scope": "all", "time_limit": args.time_limit, "effort": args.effort,
                     "seed": args.seed}
             moved_start = []
@@ -134,6 +137,10 @@ def run_board(board, args, placed_dir):
                    "blocks": len(s.blocks), "moved": len(s.proposal),
                    "scrambled": len(moved_start), "analyze_s": round(t_an, 2),
                    "place_s": round(t_place, 2), "status": "ok"}
+            row["human_score"] = human_score
+            sc, am = layout_score(s.board, s.rules, s.proposal, base=base)
+            row["after_score"] = round(sc, 1)
+            row["new_overlaps"], row["new_off_board"] = am["new_overlaps"], am["new_off_board"]
             for k in KEYS:
                 row[f"human_{k}"] = human[k]
                 row[f"start_{k}"] = start[k]
@@ -174,8 +181,8 @@ def write_summary(rows, out):
         if not mr:
             continue
         L += [f"## {title}", "",
-              "| Board | Parts | Ratsnest (mm) | Change | Crossings | Overlaps | Off board | Time (s) |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|"]
+              "| Board | Parts | Ratsnest (mm) | Change | Crossings | New overlaps | Newly off board | Score | Time (s) |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
         ch = []
         for r in mr:
             a, b = r[f"{ref}_signal_ratsnest_mm"], r["after_signal_ratsnest_mm"]
@@ -184,21 +191,24 @@ def write_summary(rows, out):
                 ch.append(c)
             L.append(f"| {r['board']} | {r['parts']} | {a} → {b} | {c:+.1f} % | "
                      f"{r[f'{ref}_crossings']} → {r['after_crossings']} | "
-                     f"{r[f'{ref}_overlaps']} → {r['after_overlaps']} | "
-                     f"{r[f'{ref}_out_of_board']} → {r['after_out_of_board']} | {r['place_s']} |")
+                     f"{r['new_overlaps']} | {r['new_off_board']} | "
+                     f"{r['human_score']:.0f} → {r['after_score']:.0f} | {r['place_s']} |")
         if ch:
             better = sum(1 for c in ch if c < 0)
             L += ["", f"**Median signal ratsnest change: {statistics.median(ch):+.1f} %** "
                       f"(shorter on {better} of {len(ch)} boards). "
                       f"No new overlaps or off-board parts: "
-                      f"{sum(1 for r in mr if r['after_overlaps'] <= r[f'{ref}_overlaps'] and r['after_out_of_board'] <= r[f'{ref}_out_of_board'])}"
+                      f"{sum(1 for r in mr if r['new_overlaps'] == 0 and r['new_off_board'] == 0)}"
                       f" of {len(mr)}.", ""]
     bad = [r for r in rows if r.get("status") != "ok"]
     if bad:
         L += ["## Not measured", ""] + [f"- {r['board']}: {r['status']}" for r in bad] + [""]
     L += ["Ratsnest = total straight-line length of all signal connections (power and ground excluded).",
           "Lower is better: shorter, simpler routing. Crossings = ratsnest lines that cross each other.",
-          "Off board counts parts outside the outline (logos and fiducials often are, even in the original).",
+          "Score = signal ratsnest + 1/4 of power ratsnest + 4 mm per crossing + 1200 per new overlap or part newly off board",
+          "(lower is better). The tool never proposes a layout whose score is worse than the current one.",
+          "New overlaps / newly off board: compared with the designer's layout, whose own near-misses (45-degree parts,",
+          "tightly packed connectors, logos past the edge) are not counted against the tool.",
           "Scratch mode keeps locked parts, connectors and mounting holes where the designer put them."]
     open(os.path.join(out, "summary.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")
     return "\n".join(L)

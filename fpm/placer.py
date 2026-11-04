@@ -72,6 +72,8 @@ class PlaceOptions:
     anchor_pull: float = 15.0          # pull of a block towards its own fixed parts (e.g. its antenna connector)
     edge_margin: float = 0.3           # keep movable courtyards this far inside the board edge (mm)
     repair: bool = False               # only nudge the movable parts locally (check-and-fix rounds)
+    crossing_weight: float = 4.0       # cost of one ratsnest crossing, in mm of connection length
+    keep_best: bool = True             # never propose a layout that scores worse than the current one
     # AI / learned placement hints (see fpm/ai.py):
     #   near:  [{ref, target, pin?, offset?[dx,dy] in target frame, weight?}]
     #   edge:  [{ref, side: any|left|right|top|bottom, weight?}]
@@ -181,6 +183,88 @@ def _inside_outline(segs, x, y) -> bool:
             if xc > x:
                 inside = not inside
     return inside
+
+
+class _CrossIndex:
+    """Signal-net ratsnest (pad-to-pad MST, as in metrics.ratsnest) kept in a coarse grid, so the
+    annealer can ask "how many other nets does this net cross?" after each move."""
+
+    def __init__(self, placer, cell=5.0):
+        from .metrics import _mst
+        self._mst = _mst
+        self.p = placer
+        self.cell = cell
+        self.pins: Dict[str, list] = {}
+        self.of: Dict[str, List[str]] = defaultdict(list)
+        for net, pins in placer._members.items():
+            pins = [(r, pd) for r, pd in pins if r in placer.active]
+            if len(pins) < 2 or len(pins) > 60 or net_kind(net) != "sig":
+                continue
+            self.pins[net] = pins
+            for r, _ in pins:
+                if not self.of[r] or self.of[r][-1] != net:
+                    self.of[r].append(net)
+        self.segs: Dict[str, list] = {}
+        self.where: Dict[str, list] = {}
+        self.grid: Dict[tuple, Set[str]] = defaultdict(set)
+        for net in self.pins:
+            self.set(net, self.build(net))
+
+    def build(self, net):
+        pts = [self.p.pad_xy(r, pd) for r, pd in self.pins[net]]
+        return [(pts[a][0], pts[a][1], pts[b][0], pts[b][1]) for a, b in self._mst(pts)]
+
+    def _cells(self, sg):
+        c = self.cell
+        n = max(1, int(math.hypot(sg[2] - sg[0], sg[3] - sg[1]) / (c * 0.5)))
+        out = set()
+        for k in range(n + 1):
+            t = k / n
+            x, y = sg[0] + (sg[2] - sg[0]) * t, sg[1] + (sg[3] - sg[1]) * t
+            gx, gy = int(x // c), int(y // c)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    out.add((gx + dx, gy + dy))
+        return out
+
+    def set(self, net, segs):
+        for k in self.where.get(net, ()):
+            self.grid[k].discard(net)
+        cells = set()
+        for sg in segs:
+            cells |= self._cells(sg)
+        for k in cells:
+            self.grid[k].add(net)
+        self.segs[net] = segs
+        self.where[net] = list(cells)
+
+    def nets_for(self, refs):
+        out = []
+        for r in refs:
+            for n in self.of.get(r, ()):
+                if n not in out:
+                    out.append(n)
+        return out
+
+    def count(self, net) -> int:
+        from .metrics import _seg_cross
+        segs = self.segs[net]
+        if not segs:
+            return 0
+        others = set()
+        for k in self.where[net]:
+            others |= self.grid[k]
+        others.discard(net)
+        c = 0
+        for o in others:
+            for t in self.segs[o]:
+                for sg in segs:
+                    if _seg_cross(sg, t):
+                        c += 1
+        return c
+
+    def cost(self, nets) -> float:
+        return self.p.o.crossing_weight * sum(self.count(n) for n in nets)
 
 
 class Placer:
@@ -1082,6 +1166,7 @@ class Placer:
         if self.o.repair:
             step0 = 1.5
         accepted = 0
+        cx = _CrossIndex(self) if self.o.crossing_weight > 0 else None
         for it in range(iters):
             if it % 256 == 0 and time.time() > deadline:
                 self.log(f"stage C stopped at time limit after {it} moves")
@@ -1124,7 +1209,11 @@ class Placer:
                 new = {r: [x + self.rng.gauss(0, step), y + self.rng.gauss(0, step), rot]}
 
             terms = self.touched_terms(refs)
+            xn = cx.nets_for(refs) if cx else ()
             before = self.terms_cost(terms) + sum(self.local_cost(q) for q in refs)
+            if xn:
+                before += cx.cost(xn)
+                old_segs = {n: cx.segs[n] for n in xn}
             for q in refs:
                 self.hash.remove(q)
             for q in refs:
@@ -1132,6 +1221,10 @@ class Placer:
             for q in refs:
                 self.hash.insert(q, self.layers[q], self.box(q))
             after = self.terms_cost(terms) + sum(self.local_cost(q) for q in refs)
+            if xn:
+                for n in xn:
+                    cx.set(n, cx.build(n))
+                after += cx.cost(xn)
             delta = after - before
             if delta <= 0 or self.rng.random() < math.exp(-delta / max(T, 1e-4)):
                 accepted += 1
@@ -1140,6 +1233,9 @@ class Placer:
                     self.hash.remove(q)
                     self.pos[q] = old[q]
                     self.hash.insert(q, self.layers[q], self.box(q))
+                if xn:
+                    for n, sg in old_segs.items():
+                        cx.set(n, sg)
             T = (0.4 if self.o.repair else 2.0) * (0.002 / 2.0) ** frac        # geometric cooling
         self.log(f"stage C: {accepted} accepted moves")
 
@@ -1258,7 +1354,86 @@ class Placer:
         return out
 
 
+def layout_issues(board, moves):
+    """(overlap pairs, parts off the board) for a layout; moves override board positions."""
+    from . import metrics
+    ov = {tuple(sorted(pr)) for pr in metrics.overlaps(board, moves)}
+    return ov, set(metrics.out_of_board(board, moves))
+
+
+def rollback_offenders(board, moves, base, rounds=40):
+    """Put parts that cause a NEW overlap or end up off the board back where they were, so one
+    part the legalizer could not fit does not spoil an otherwise better layout."""
+    moves = dict(moves)
+    for _ in range(rounds):
+        ov, off = layout_issues(board, moves)
+        bad = {r for pr in ov - base[0] for r in pr} | (off - base[1])
+        bad &= set(moves)
+        if not bad:
+            break
+        for r in bad:
+            del moves[r]
+    return moves
+
+
+def layout_score(board, rules, moves, crossing_weight=4.0, base=None) -> Tuple[float, dict]:
+    """One number for "how good is this layout" (lower is better): signal connection length,
+    a quarter of the power-net length, crossings, and a heavy penalty per overlap or part off
+    the board. With base = layout_issues(current layout), only overlaps and off-board parts
+    that are NEW are penalised: the designer's own layout may contain boxes that only look
+    like overlaps (45-degree parts, parts tucked under others, logos past the edge)."""
+    from . import metrics
+    m = metrics.evaluate(board, rules, moves)
+    sig = m["signal_ratsnest_mm"]
+    pwr = max(0.0, m["all_ratsnest_mm"] - sig)
+    ov, off = layout_issues(board, moves)
+    if base is not None:
+        ov, off = ov - base[0], off - base[1]
+    m["new_overlaps"], m["new_off_board"] = len(ov), len(off)
+    # a part off the board, or a new overlap, is never acceptable
+    score = sig + 0.25 * pwr + crossing_weight * m["crossings"] + 3 * BIG * (len(ov) + len(off))
+    return score, m
+
+
 def propose(board, blocks, assign, rules, opts: PlaceOptions, locked=None, log=None):
+    log = log or (lambda *_: None)
+    t0 = time.time()
     p = Placer(board, blocks, assign, rules, opts, locked, log)
-    moves = p.run()
-    return moves, {k: list(v) for k, v in p.block_center.items()}
+    on = [r for r in p.movable if p._on_board(r)]
+    improving = bool(p.movable) and len(on) >= 0.8 * len(p.movable)
+    if not opts.keep_best or opts.repair or not improving:
+        moves = p.run()
+        return moves, {k: list(v) for k, v in p.block_center.items()}
+
+    # The parts are already on the board: try a fresh placement AND a refinement of the
+    # existing layout, and keep whichever scores best, including "change nothing".
+    import copy
+    oa = copy.copy(opts)
+    oa.time_limit = opts.time_limit * 0.55
+    p.o = oa
+    fresh = p.run()
+    fresh_centers = {k: list(v) for k, v in p.block_center.items()}
+    ob = copy.copy(opts)
+    ob.repair = True
+    ob.time_limit = max(1.0, opts.time_limit - (time.time() - t0))
+    q = Placer(board, blocks, assign, rules, ob, locked, log)
+    refined = q.run()
+    refined_centers = {k: list(v) for k, v in q.block_center.items()}
+
+    cw = opts.crossing_weight
+    base = layout_issues(board, {})
+    cands = [("current layout", {}, {}), ("fresh placement", fresh, fresh_centers),
+             ("refined current layout", refined, refined_centers)]
+    cands = [(n, rollback_offenders(board, mv, base) if mv else mv, ce) for n, mv, ce in cands]
+    scored = []
+    for name, mv, ce in cands:
+        sc, m = layout_score(board, rules, mv, cw, base)
+        scored.append((sc, name, mv, ce, m))
+        log(f"  {name}: score {sc:.0f} (ratsnest {m['signal_ratsnest_mm']} mm, {m['crossings']} crossings, "
+            f"{m['new_overlaps']} new overlaps, {m['new_off_board']} newly off board)")
+    sc, name, mv, ce, _ = min(scored, key=lambda t: t[0])
+    if name == "current layout":
+        log("Keeping the current layout: no candidate scored better.")
+    else:
+        log(f"Using the {name} (score {scored[0][0]:.0f} -> {sc:.0f}).")
+    return mv, ce

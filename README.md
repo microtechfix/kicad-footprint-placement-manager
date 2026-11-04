@@ -9,14 +9,18 @@ used to group parts. They only say how much a connection matters.
 
 ---
 
+## Download
+
+**Latest version: 0.6.0** — [download the zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.6.0.zip) · [what's new](CHANGELOG.md)
+
 ## Install
 
 1. In KiCad: **Preferences → Plugins**, turn on **Enable KiCad API** and set the
    Python interpreter to KiCad's bundled one:
    `C:\Program Files\KiCad\10.0\bin\pythonw.exe`
-2. Download `FootprintPlacementManager-<version>.zip` from the
-   [latest release](https://github.com/microtechfix/kicad-footprint-placement-manager/releases/latest)
-   and extract it into your KiCad plugins folder, so you get
+2. Download **[FootprintPlacementManager-0.6.0.zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.6.0.zip)**
+   (also under [Releases](https://github.com/microtechfix/kicad-footprint-placement-manager/releases)
+   when published) and extract it into your KiCad plugins folder, so you get
    `C:\Users\<you>\Documents\KiCad\10.0\plugins\FootprintPlacementManager\plugin.json`.
    (Updating: close KiCad, delete the old `FootprintPlacementManager` folder, extract the new one.)
 3. Restart the PCB editor. KiCad creates a private Python environment for the

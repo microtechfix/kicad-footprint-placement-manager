@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 (2026-11-10)
+
+- **Fix ground.** For a routed board whose ground pour has been cut into pieces. The new
+  **Fix ground…** button (Check and fix panel) and `fpm_cli.py board.kicad_pcb --fix-ground`:
+  - join every piece of the pour to the rest with a stitching via, including thermal vias in the
+    exposed pads of QFN-style parts;
+  - connect ground pads the fill does not reach, with a short track to the fill or to a new via,
+    routed around other nets when the pad is boxed in;
+  - switch pads that only got one thermal spoke to a solid zone connection (fixed copy only);
+  - list what still needs a manual fix, with coordinates.
+  Every via and track is checked against the board's clearance, hole and edge rules on all copper
+  layers. Live in KiCad it is one undoable commit; offline it writes `<board>-gndfix.kicad_pcb`
+  and never touches the original.
+
 ## 0.6.0 (2026-11-04)
 
 - **Never makes your layout worse.** When the parts are already on the board, Propose tries a

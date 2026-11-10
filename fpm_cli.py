@@ -3,6 +3,7 @@
   python fpm_cli.py board.kicad_pcb                 # print blocks and metrics
   python fpm_cli.py board.kicad_pcb --place         # also generate a proposal and compare metrics
   python fpm_cli.py board.kicad_pcb --ui            # open the review UI on the file (read-only)
+  python fpm_cli.py board.kicad_pcb --fix-ground    # stitch the ground pour; writes board-gndfix.kicad_pcb
   python fpm_cli.py --live                          # open the UI on the board open in KiCad
                                                     # (needs KiCad's API server enabled)
 """
@@ -22,6 +23,12 @@ def main():
     ap.add_argument("--place", action="store_true", help="generate a placement proposal")
     ap.add_argument("--scope", default="all", choices=["all", "new"])
     ap.add_argument("--out", help="write the proposal (ref -> x, y, rot) to this JSON file")
+    ap.add_argument("--fix-ground", action="store_true",
+                    help="join the pieces of the ground pour with vias and connect stranded ground pads; "
+                         "writes <board>-gndfix.kicad_pcb and leaves the original alone")
+    ap.add_argument("--net", help="zone net for --fix-ground (default: GND, or the largest zone)")
+    ap.add_argument("--keep-thermals", action="store_true",
+                    help="with --fix-ground: do not switch starved pads to a solid zone connection")
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--browser", action="store_true", help="use the web browser instead of a native window")
@@ -35,6 +42,20 @@ def main():
         backend = FileBackend(a.board)
     else:
         ap.error("give a .kicad_pcb file or --live")
+
+    if a.fix_ground:
+        if not a.board:
+            ap.error("--fix-ground needs a .kicad_pcb file")
+        from fpm import ground
+        gp, out = ground.fix_file(a.board, a.out, net=a.net, solid_starved=not a.keep_thermals)
+        print(gp.summary())
+        for n in gp.notes if gp.pieces else []:
+            print("  note: " + n)
+        for u in gp.unsolved:
+            print("  needs a manual fix: " + u)
+        if gp.fixes:
+            print(f"\n  fixed copy written to {out}\n  open it in KiCad, press B to refill the zones, and run DRC")
+        return
 
     if a.ui or a.live:
         if not a.browser:

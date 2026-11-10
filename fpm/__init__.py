@@ -2,7 +2,7 @@
 import json as _json
 import os as _os
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 PLUGIN_DIR = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 
 

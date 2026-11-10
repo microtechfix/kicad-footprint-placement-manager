@@ -826,6 +826,11 @@ class MainFrame(wx.Frame):
         row.Add(bt, 0, wx.RIGHT, 6)
         bt = wx.Button(cbx, label="Check && fix")
         bt.Bind(wx.EVT_BUTTON, self.on_check_fix)
+        row.Add(bt, 0, wx.RIGHT, 6)
+        bt = wx.Button(cbx, label="Fix ground…")
+        bt.SetToolTip("For a routed board: joins the pieces of the ground pour with vias and connects ground "
+                      "pads the fill does not reach.")
+        bt.Bind(wx.EVT_BUTTON, self.on_fix_ground)
         row.Add(bt, 0)
         c.Add(row, 0, wx.ALL, 4)
         self.st_check = wx.StaticText(cbx, label="")
@@ -1629,6 +1634,42 @@ class MainFrame(wx.Frame):
     def on_check_fix(self, _e):
         self._check_settings()
         self.run(lambda: self.session.check_and_fix(), "Checking and fixing")
+
+    def on_fix_ground(self, _e):
+        s = self.session
+        box = {}
+
+        def preview():
+            box["r"] = s.fix_ground({"apply": False})
+
+        def ask():
+            r = box.get("r") or {}
+            gp = getattr(s, "ground_plan", None)
+            if gp is None or not gp.net or not gp.pieces:
+                wx.MessageBox("\n".join(r.get("notes") or ["No filled copper zone found."]), "Fix ground",
+                              wx.OK | wx.ICON_INFORMATION, self)
+                return
+            if not gp.fixes:
+                wx.MessageBox(gp.summary() + ("\n\nNeeds a manual fix:\n" + "\n".join(gp.unsolved[:15])
+                                              if gp.unsolved else ""), "Fix ground", wx.OK | wx.ICON_INFORMATION, self)
+                return
+            live = s.backend.can_apply
+            msg = (f"{gp.summary()}\n\n"
+                   + ("Yes: add the vias and tracks to the board open in KiCad (one Ctrl+Z undoes it).\n"
+                      "No: write a fixed copy next to the board instead; the copy also gets the solid pad "
+                      "connections.\nCancel: change nothing." if live else
+                      "This writes a fixed copy next to the board (name ending in -gndfix). The original "
+                      "file is not changed.\n\nContinue?"))
+            if gp.unsolved:
+                msg += f"\n\n{len(gp.unsolved)} item(s) will still need a manual fix; they are listed in the log."
+            style = (wx.YES_NO | wx.CANCEL if live else wx.YES_NO) | wx.ICON_QUESTION
+            ans = wx.MessageBox(msg, "Fix ground", style, self)
+            if ans == wx.CANCEL or (not live and ans != wx.YES):
+                return
+            mode = "auto" if (live and ans == wx.YES) else "copy"
+            self.run(lambda: s.fix_ground({"apply": True, "mode": mode, "refill": False}), "Fixing the ground pour")
+
+        self.run(preview, "Reading the ground pour", after=ask)
 
     def on_viol_select(self, _e):
         rows = selected_rows(self.lc_viol)

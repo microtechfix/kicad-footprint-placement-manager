@@ -11,14 +11,14 @@ used to group parts. They only say how much a connection matters.
 
 ## Download
 
-**Latest version: 0.6.0** — [download the zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.6.0.zip) · [what's new](CHANGELOG.md)
+**Latest version: 0.7.0** — [download the zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.7.0.zip) · [what's new](CHANGELOG.md)
 
 ## Install
 
 1. In KiCad: **Preferences → Plugins**, turn on **Enable KiCad API** and set the
    Python interpreter to KiCad's bundled one:
    `C:\Program Files\KiCad\10.0\bin\pythonw.exe`
-2. Download **[FootprintPlacementManager-0.6.0.zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.6.0.zip)**
+2. Download **[FootprintPlacementManager-0.7.0.zip](https://github.com/microtechfix/kicad-footprint-placement-manager/raw/main/dist/FootprintPlacementManager-0.7.0.zip)**
    (also under [Releases](https://github.com/microtechfix/kicad-footprint-placement-manager/releases)
    when published) and extract it into your KiCad plugins folder, so you get
    `C:\Users\<you>\Documents\KiCad\10.0\plugins\FootprintPlacementManager\plugin.json`.
@@ -279,7 +279,7 @@ tests/                 workflow test on KiCad demo boards, mocked IPC test
 ## Versions and copies
 
 - The window title and the first log line show the version and the folder the
-  plugin runs from, e.g. `Footprint Placement Manager 0.6.0 running from …`.
+  plugin runs from, e.g. `Footprint Placement Manager 0.7.0 running from …`.
 - **Auto place** never uses AI suggestions. **AI auto place** collects fresh
   suggestions and uses all of them. *Generate proposal* in step 4 uses the
   suggestions ticked in step 5 only when *Use the AI suggestions* is ticked.
@@ -302,6 +302,29 @@ tests/                 workflow test on KiCad demo boards, mocked IPC test
   `.fpm.json` meanwhile.
 
 ---
+
+## Fix ground (routed boards)
+
+After routing, a ground pour on the outer layers is usually cut into pieces by the tracks. KiCad's
+DRC then reports "isolated copper fill", "missing connection between items" and "thermal relief
+connection incomplete" by the dozen, all from that one cause.
+
+**Fix ground…** (in the *Check and fix* panel) reads the pour and adds only what is needed:
+
+- a stitching via wherever a piece of the pour overlaps the pour on another layer;
+- a short track, with a via if needed, for each ground pad the fill does not reach;
+- a solid zone connection for pads where only one thermal spoke fits.
+
+Refill the zones (**B**) and save first, so the tool sees the current copper. In KiCad the vias and
+tracks are added as one step that Ctrl+Z undoes. Offline, or if you choose *copy*, it writes
+`<board>-gndfix.kicad_pcb` next to your board and leaves the original alone:
+
+```
+python fpm_cli.py board.kicad_pcb --fix-ground
+```
+
+Open the copy, press **B**, and run DRC. Pads boxed in by other nets' tracks with no room for a
+via are listed with their coordinates; those need a neighbouring track moved by hand.
 
 ## License
 

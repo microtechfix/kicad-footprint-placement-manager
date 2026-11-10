@@ -274,6 +274,57 @@ class LiveBackend:
                 pass
         return len(changed)
 
+    def refill(self) -> bool:
+        if self.board is None:
+            self.board = self.kicad.get_board()
+        try:
+            self.board.refill_zones(block=True, max_poll_seconds=60.0)
+            return True
+        except Exception:
+            return False
+
+    def apply_ground(self, gp, message: str) -> Dict[str, int]:
+        """Create the ground fix's vias and tracks in KiCad as one undoable commit, then refill."""
+        from kipy.board_types import Via, Track
+        from kipy.geometry import Vector2
+        from kipy.proto.board.board_types_pb2 import BoardLayer
+        if self.board is None:
+            self.board = self.kicad.get_board()
+        net = next((n for n in self.board.get_nets() if n.name == gp.net), None)
+        if net is None:
+            raise ValueError(f"KiCad has no net called {gp.net}")
+        nm = lambda v: int(round(v * 1e6))
+        items, nv, nt = [], 0, 0
+        for f in gp.fixes:
+            if f.kind == "via":
+                v = Via()
+                v.position = Vector2.from_xy(nm(f.x), nm(f.y))
+                v.net = net
+                v.diameter = nm(f.width)
+                v.drill_diameter = nm(f.drill)
+                items.append(v)
+                nv += 1
+            elif f.kind == "track":
+                t = Track()
+                t.start = Vector2.from_xy(nm(f.x), nm(f.y))
+                t.end = Vector2.from_xy(nm(f.x2), nm(f.y2))
+                t.width = nm(f.width)
+                t.layer = getattr(BoardLayer, "BL_" + f.layer.replace(".", "_"))
+                t.net = net
+                items.append(t)
+                nt += 1
+        if not items:
+            return {"vias": 0, "tracks": 0}
+        commit = self.board.begin_commit()
+        try:
+            self.board.create_items(items)
+        except Exception:
+            self.board.drop_commit(commit)
+            raise
+        self.board.push_commit(commit, message)
+        self.refill()
+        return {"vias": nv, "tracks": nt}
+
     def board_text(self) -> str:
         """The board as KiCad currently holds it (including unsaved edits)."""
         if self.board is None:
@@ -338,6 +389,9 @@ class FileBackend:
         if self.overrides:
             text, _ = pcb_write.apply_positions(text, self.overrides)
         return text
+
+    def refill(self) -> bool:
+        return False                                  # offline: the fills are whatever the file holds
 
     def current_positions(self):
         b = self.load()

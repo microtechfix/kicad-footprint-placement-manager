@@ -67,6 +67,8 @@ class FakeBoard:
     def get_tracks(self): return list(getattr(self, "tracks", ["t1", "t2"]))
     def get_vias(self): return ["v1"] if getattr(self, "tracks", None) is None else []
     def remove_items(self, items): self.removed = list(items); self.tracks = []
+    def create_items(self, items): self.created = getattr(self, "created", []) + list(items); return items
+    def get_as_string(self): return getattr(self, "text", "")
     def refill_zones(self, block=True, max_poll_seconds=30.0): self.commits.append("refill")
     def begin_commit(self): self.commits.append("open"); return "c1"
     def update_items(self, items): self.updated.extend(items); return items

@@ -44,6 +44,7 @@ class Session:
         self.sch_groups = None
         self.pin_names: Dict[str, Dict[str, str]] = {}   # ref -> pin number -> pin name (schematic)
         self.violations: list = []
+        self.ground_plan = None
         self.check_note = ""
         self.use_kicad_drc = True
         self.fix_rounds = 4
@@ -433,6 +434,71 @@ class Session:
             self.log("Check passed: no placement violations." if not left else
                      f"{len(left)} violation(s) remain; see the list. Locked or frozen parts can't be moved.")
             return vs
+
+    def fix_ground(self, d: Optional[dict] = None) -> dict:
+        """Stitch the ground pour together: vias between its pieces, vias or tracks for pads the
+        fill does not reach, solid connections for pads with too few thermal spokes.
+
+        d: apply (bool), net (default GND or the largest zone net), solid (bool, default True),
+           mode: "auto" (live in KiCad when possible, else a fixed copy) | "live" | "copy".
+        The original board file is never overwritten; "copy" writes <board>-gndfix.kicad_pcb.
+        """
+        from . import ground
+        d = d or {}
+        with self.lock:
+            live = bool(self.backend.can_apply)
+            if live and d.get("refill", True):
+                if self.backend.refill():
+                    self.log("Refilled the zones so the ground fix sees the current copper.")
+            text = self.backend.board_text()
+            bf = self.backend.board_file() or ""
+            rules = ground.load_rules(os.path.splitext(bf)[0] + ".kicad_pro")
+            gp = ground.plan(text, rules, net=d.get("net"), solid_starved=bool(d.get("solid", True)))
+            self.ground_plan = gp
+            for n in gp.notes if not gp.net else []:
+                self.log(n)
+            if not gp.net or not gp.pieces:
+                return {**gp.to_json(), "applied": "", "file": ""}
+            self.log(gp.summary())
+            res = {**gp.to_json(), "applied": "", "file": ""}
+            if not d.get("apply") or not gp.fixes:
+                if not gp.fixes and not gp.unsolved:
+                    self.log(f"The {gp.net} fill is already one connected piece. Nothing to fix.")
+                return res
+            mode = d.get("mode", "auto")
+            if live and mode in ("auto", "live"):
+                try:
+                    n = self.backend.apply_ground(gp, f"{APP_NAME}: ground fix ({len(gp.vias)} vias)")
+                    res["applied"] = "live"
+                    self.log(f"Added {n['vias']} via(s) and {n['tracks']} track(s) in KiCad and refilled the "
+                             f"zones. Ctrl+Z in KiCad undoes it.")
+                    if gp.solids:
+                        pads = ", ".join(f"{f.ref} pad {f.pad}" for f in gp.solids[:40])
+                        self.log(f"{len(gp.solids)} pad(s) still have too few thermal spokes. In KiCad, open "
+                                 f"each pad's properties and set Connections > Pad connection to Solid: {pads}")
+                except Exception as e:
+                    self.log(f"Could not add the items through KiCad's API ({type(e).__name__}: {e}); "
+                             f"writing a fixed copy instead.")
+                    if mode == "live":
+                        raise
+            if not res["applied"]:
+                if not bf:
+                    raise ValueError("Save the board first, so the fixed copy has somewhere to go.")
+                out = os.path.splitext(bf)[0] + "-gndfix.kicad_pcb"
+                with open(out, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(ground.write(text, gp))
+                pro = os.path.splitext(bf)[0] + ".kicad_pro"
+                if os.path.exists(pro) and not os.path.exists(os.path.splitext(out)[0] + ".kicad_pro"):
+                    import shutil
+                    shutil.copy(pro, os.path.splitext(out)[0] + ".kicad_pro")
+                res["applied"], res["file"] = "copy", out
+                self.log(f"Wrote the fixed board to {out}. Your original file is untouched. Open the copy, "
+                         f"press B to refill the zones, and run DRC.")
+            for u in gp.unsolved:
+                self.log("  needs a manual fix: " + u)
+            for n in gp.notes:
+                self.log(n)
+            return res
 
     def _eval(self):
         self.metrics_after = metrics.evaluate(self.board, self.rules, self.proposal, label="proposal")
